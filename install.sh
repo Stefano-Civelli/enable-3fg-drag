@@ -49,9 +49,19 @@ if [ -z "$method" ]; then
 	echo "==> Auto-detected method: $method"
 fi
 
-# --- libinput version sanity check -------------------------------------
-ver="$(libinput --version 2>/dev/null || echo 0)"
-if [ "$(printf '%s\n1.28\n' "$ver" | sort -V | head -1)" != "1.28" ]; then
+# --- libinput version sanity check (advisory only) ---------------------
+# The shim safely no-ops on libinput < 1.28 (its 3fg_drag dlsym lookups just
+# resolve to NULL), so this never blocks the install; it only warns early.
+# The `libinput` CLI ships separately in libinput-tools, which desktops don't
+# pull in — so fall back to pkg-config, whose metadata rides along with the
+# dev headers the shim already needs to compile. If neither answers, stay
+# silent rather than cry wolf; the post-login journal line printed below is
+# the authoritative check. (grep isolates the version and strips Debian
+# epoch/revision like "2:1.25.0-1ubuntu2" -> "1.25.0" so sort -V stays honest;
+# the `|| true`s keep a failed probe from tripping `set -e`/`pipefail`.)
+ver="$(libinput --version 2>/dev/null || pkg-config --modversion libinput 2>/dev/null || true)"
+ver="$(printf '%s' "$ver" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || true)"
+if [ -n "$ver" ] && [ "$(printf '%s\n1.28\n' "$ver" | sort -V | head -1)" != "1.28" ]; then
 	echo "WARNING: libinput $ver is older than 1.28; native 3-finger drag" >&2
 	echo "         may be unavailable. 1.31+ is recommended (adds fast-swipe)." >&2
 fi
